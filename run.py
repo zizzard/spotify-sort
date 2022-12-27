@@ -5,6 +5,8 @@ import json
 from spotipy.oauth2 import SpotifyOAuth
 
 # Make sure to set these path variables to ensure the spotify API works properly
+# You can get these by going to the spotify dashboard and creating an app
+# https://developer.spotify.com/dashboard/applications
 # export SPOTIPY_CLIENT_ID=<CLIENT_ID>
 # export SPOTIPY_CLIENT_SECRET=<SPOTIPY_CLIENT_SECRET>
 # export SPOTIPY_REDIRECT_URI=<SPOTIPY_REDIRECT_URI>
@@ -21,11 +23,12 @@ feature_list = [
     "loudness",
     "mode",
     "speechiness",
-    # "tempo",
+    "tempo",
     "valence"
 ]
 
-
+# Divide a list l into a generator of lists of size `n`
+# Need to convert back into a list upon retrevial 
 def divide_chunks(l, n):
     for i in range(0, len(l), n):
         yield l[i:i + n]
@@ -40,7 +43,6 @@ def divide_chunks(l, n):
 # get_normalized_data returns [float, float, float, float, float]
 # where each float is between 0.0 and 1.0
 def get_normalized_data(song, feature_groups):
-
     data = []
 
     for group in feature_groups:
@@ -88,6 +90,9 @@ def get_tour(start, remaining_points, dist):
     
     return (tour, tour_length)
 
+# Takes a list of raw song data and calculates the minumum and 
+# maximum value for each feature among the playlist to ensure we 
+# don't favor one feature over another
 def get_feature_data(raw_data):
     feature_data = []
     for feature in feature_list:
@@ -107,7 +112,7 @@ def get_feature_data(raw_data):
 
     return feature_data
 
-
+# calculates the shortest tour for raw song data
 def calc(raw_data):
     feature_groups = get_feature_data(raw_data)
 
@@ -147,7 +152,7 @@ def calc(raw_data):
     return shortest_tour
 
 
-# Main
+# Pulls the playlist data and generates the track ordering
 def generate_track_ordering(playlist_url):
     data = sp.playlist(playlist_url)
     data_store = {
@@ -180,16 +185,16 @@ def generate_track_ordering(playlist_url):
         for song in results:
             track_info.append(song)
 
+    # Generate the shortest tour with the track info 
     tour = calc(track_info)
 
     song_ids_in_order = []
     for id in tour:
         song_ids_in_order.append(track_info[id]["id"])
     
-
     return (data_store, song_ids_in_order)
 
-
+# Uploads all of the songs to the new playlist in order
 def upload_songs(data_store, song_ids_in_order):
     chunk_size = 50
     id_chunks = list(divide_chunks(song_ids_in_order, chunk_size))
