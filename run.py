@@ -3,22 +3,26 @@ import math
 import sys
 from spotipy.oauth2 import SpotifyOAuth
 
+from datetime import datetime
+
 scope = "playlist-read-private, playlist-read-collaborative, playlist-modify-private, playlist-modify-public"
 sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
     scope=scope), requests_timeout=15)
 
-feature_list = [
+DEBUG = True
+FEATURE_LIST = [
     ["acousticness",     1.0],
-    ["danceability",     1.0],
-    ["energy",           1.0],
-    ["instrumentalness", 1.0],
-    ["liveness",         1.0],
-    ["loudness",         1.0],
-    ["mode",             1.0],
-    ["speechiness",      1.0],
-    ["tempo",            1.0],
-    ["valence",          1.0]
+    ["danceability",     1.1],
+    ["energy",           1.2],
+    ["instrumentalness", 0.9],
+    ["liveness",         0.6],
+    ["loudness",         0.8],
+    ["mode",             0.8],
+    ["speechiness",      0.6],
+    ["tempo",            0.7],
+    ["valence",          1.1]
 ]
+DEBUG_STRING = ', '.join(f"{pair[0]} {pair[1]}" for pair in FEATURE_LIST)
 
 # Used by the spotify API to split large requests into multiple smaller ones
 CHUNK_SIZE = 50
@@ -39,10 +43,10 @@ def divide_chunks(l, n):
 # feature_groups = [
 #   [feature_name (string), min_value (float), max_value (float)], ...
 # ]
-# exists for each feature in the feature_list provided above
+# exists for each feature in the FEATURE_LIST provided above
 
 # get_normalized_data returns [float, float, float, float, float]
-# where each float is between 0.0 and 1.0 corresponding to each feature in the feature_list provided above
+# where each float is between 0.0 and 1.0 corresponding to each feature in the FEATURE_LIST provided above
 def get_normalized_data(song, feature_groups):
     data = []
 
@@ -65,7 +69,7 @@ def calc_distance(feat_list_1, feat_list_2):
     sum = 0
     for (index, feat_1) in enumerate(feat_list_1):
         feat_2 = feat_list_2[index]
-        feat_weight = feature_list[index][1]
+        feat_weight = FEATURE_LIST[index][1]
         
         weighted_square_diff = pow(feat_1 - feat_2, 2) * feat_weight
         sum += weighted_square_diff
@@ -101,7 +105,7 @@ def get_tour(start, remaining_points, dist):
 # each feature value
 def get_feature_data(raw_data):
     feature_data = []
-    for feature, _ in feature_list:
+    for feature, _ in FEATURE_LIST:
         feat_max = 0
         feat_min = 999999999999999
         for song in raw_data:
@@ -222,8 +226,15 @@ def upload_songs(data_store, song_ids_in_order):
 
     # Create a new playlist
     playlist_name = f"{data_store['name']} (copy)"
+    description = data_store["description"]
+
+    if DEBUG:
+        playlist_name =  datetime.now().strftime("%m/%d/%Y %H:%M:%S")
+        description = DEBUG_STRING
+
+    # Public currently doesn't work
     new_playlist = sp.user_playlist_create(user=data_store["user_id"], name=playlist_name,
-                                           public=data_store["public"], description=data_store["description"])
+                                           public=data_store["public"], description=description)
 
     # Upload each chunk to the new playlist
     new_playlist_id = new_playlist["id"]
