@@ -17,11 +17,17 @@ export SPOTIPY_REDIRECT_URI=<SPOTIPY_REDIRECT_URI>
 
 ## Python Setup
 
-To access the Spotify API, this application uses the "spotipy" python package. To install this run `pip3 install spotipy`.
+To access the Spotify API, this application uses the `spotipy` python package. To install this run 
+
+```
+pip3 install spotipy
+```
 
 ## Running the application
 
 To sort a playlist, you must own the playlist and provide the playlist url to the application:
 
-`python3 run.py ${playlist_url}`
+```
+python3 run.py ${playlist_url}
+```
 
