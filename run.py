@@ -1,15 +1,7 @@
 import spotipy
-import json
 import math 
-import json
+import sys
 from spotipy.oauth2 import SpotifyOAuth
-
-# Make sure to set these path variables to ensure the spotify API works properly
-# You can get these by going to the spotify dashboard and creating an app
-# https://developer.spotify.com/dashboard/applications
-# export SPOTIPY_CLIENT_ID=<CLIENT_ID>
-# export SPOTIPY_CLIENT_SECRET=<SPOTIPY_CLIENT_SECRET>
-# export SPOTIPY_REDIRECT_URI=<SPOTIPY_REDIRECT_URI>
 
 scope = "playlist-read-private, playlist-read-collaborative, playlist-modify-private, playlist-modify-public"
 sp = spotipy.Spotify(auth_manager=SpotifyOAuth(scope=scope), requests_timeout=15)
@@ -27,7 +19,10 @@ feature_list = [
     "valence"
 ]
 
-# Divide a list l into a generator of lists of size `n`
+# Used by the spotify API to split large requests into multiple smaller ones
+CHUNK_SIZE = 50
+
+# Divide a list `l`` into a generator of lists of size `n`
 # Need to convert back into a list upon retrevial 
 def divide_chunks(l, n):
     for i in range(0, len(l), n):
@@ -39,9 +34,14 @@ def divide_chunks(l, n):
 #     ...
 # }
 # where each float is some number representing that feature
-# 
+
+# feature_groups = [ 
+#   [feature_name (string), min_value (float), max_value (float)], ...
+# ]
+# exists for each feature in the feature_list provided above
+
 # get_normalized_data returns [float, float, float, float, float]
-# where each float is between 0.0 and 1.0
+# where each float is between 0.0 and 1.0 corresponding to each feature in the feature_list provided above
 def get_normalized_data(song, feature_groups):
     data = []
 
@@ -92,7 +92,8 @@ def get_tour(start, remaining_points, dist):
 
 # Takes a list of raw song data and calculates the minumum and 
 # maximum value for each feature among the playlist to ensure we 
-# don't favor one feature over another
+# don't favor one feature over another - we will later normalize
+# each feature value
 def get_feature_data(raw_data):
     feature_data = []
     for feature in feature_list:
@@ -112,14 +113,18 @@ def get_feature_data(raw_data):
 
     return feature_data
 
-# calculates the shortest tour for raw song data
-def calc(raw_data):
+# `raw_data` is the spotify api song data (w. unimportant data filtered out
+# and split into chunks). This function returns the shortest tour for all 
+# of the songs in the raw_data list, represented by a list tracks in order
+def shortest_tour_calc(raw_data):
+    # Get the feature groups, normalize the data values, and setup the list of points
     feature_groups = get_feature_data(raw_data)
 
     data = [get_normalized_data(n, feature_groups) for n in raw_data]
     point_enums = enumerate(data)
     points = [i[0] for i in point_enums]
 
+    # Generate all of the distances pairs for all of the songs in the playlist
     dist = []
     for curr in points:
         append_list = []
@@ -133,10 +138,9 @@ def calc(raw_data):
 
         dist.append(append_list)
 
+    # Find the shortest tour
     shortest_tour = []
     shortest_tour_length = 9999999999999999
-    shortest_starting_point = -1
-
     for start in points:
         
         remaining_points = points.copy()
@@ -147,14 +151,16 @@ def calc(raw_data):
         if tour_length < shortest_tour_length:
             shortest_tour = tour
             shortest_tour_length = tour_length
-            shortest_starting_point = start
 
     return shortest_tour
 
 
 # Pulls the playlist data and generates the track ordering
 def generate_track_ordering(playlist_url):
+    # Get the playlist
     data = sp.playlist(playlist_url)
+
+    # Extract information to be used when copying later
     data_store = {
         "user_id": data["owner"]["id"],
         "name": data["name"],
@@ -162,6 +168,7 @@ def generate_track_ordering(playlist_url):
         "public": data["public"]
     }
 
+    # Extract all of the tracks from the playlist and store them in a simpler format
     tracks = data["tracks"]
     track_store = tracks["items"]
     while tracks["next"]:
@@ -177,8 +184,9 @@ def generate_track_ordering(playlist_url):
         for track in track_store
     ]
 
+    # Chunk the tracks in managable sizes (for the Spotify API) and get the audio features for each track
     track_info = []
-    track_chunks = list(divide_chunks(track_listing, 100))
+    track_chunks = list(divide_chunks(track_listing, CHUNK_SIZE))
     for track_chunk in track_chunks:
         ids = [track["id"] for track in track_chunk]
         results = sp.audio_features(ids)
@@ -186,8 +194,9 @@ def generate_track_ordering(playlist_url):
             track_info.append(song)
 
     # Generate the shortest tour with the track info 
-    tour = calc(track_info)
+    tour = shortest_tour_calc(track_info)
 
+    # Get only the track IDs from the shortest tour
     song_ids_in_order = []
     for id in tour:
         song_ids_in_order.append(track_info[id]["id"])
@@ -196,8 +205,9 @@ def generate_track_ordering(playlist_url):
 
 # Uploads all of the songs to the new playlist in order
 def upload_songs(data_store, song_ids_in_order):
-    chunk_size = 50
-    id_chunks = list(divide_chunks(song_ids_in_order, chunk_size))
+    
+    # Create the result set to create the new playlist
+    id_chunks = list(divide_chunks(song_ids_in_order, CHUNK_SIZE))
     rset = []
     for chunk in id_chunks:
         result = ""
@@ -205,15 +215,35 @@ def upload_songs(data_store, song_ids_in_order):
             result += f"spotify:track:{id},"
         rset.append(result[:-1])
 
-    playlist_name = f"{data_store['name']} (Copy)"
+    # Create a new playlist
+    playlist_name = f"{data_store['name']} (copy)"
     new_playlist = sp.user_playlist_create(user=data_store["user_id"], name=playlist_name, 
                                            public=data_store["public"], description=data_store["description"])
+
+    # Upload each chunk to the new playlist
     new_playlist_id = new_playlist["id"]
     for (index, chunk) in enumerate(id_chunks):
-        position = index * chunk_size
+        position = index * CHUNK_SIZE
         sp.playlist_add_items(new_playlist_id, chunk, position)
+    
+    return new_playlist["external_urls"]["spotify"]
 
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print("No playlist URL was provided, please run the application in using the following format: ")
+        print("  $ python3 run.py https://open.spotify.com/playlist/example_id")
+        sys.exit()
+    
+    # Example URL: https://open.spotify.com/playlist/726i7LcwWwusZMyFQSNYg8?si=e198c61c00a04ea4
+    playlist_url = sys.argv[1]
 
-playlist_url = 'https://open.spotify.com/playlist/726i7LcwWwusZMyFQSNYg8?si=e198c61c00a04ea4'
-(data_store, song_ids_in_order) = generate_track_ordering(playlist_url)
-upload_songs(data_store, song_ids_in_order)
+    # Generate the track ordering for the provided playlist
+    print("Generating track ordering...")
+    (data_store, song_ids_in_order) = generate_track_ordering(playlist_url)
+    print("Track ordering complete!")
+
+    # Upload the songs to a new playlist
+    print("Uploading to a new playlist...")
+    new_playlist_url = upload_songs(data_store, song_ids_in_order)
+    print("Complete!")
+    print(f"The new playlist can be found at: {new_playlist_url}")
