@@ -9,18 +9,28 @@ scope = "playlist-read-private, playlist-read-collaborative, playlist-modify-pri
 sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
     scope=scope), requests_timeout=15)
 
-DEBUG = True
+DEBUG = False
 FEATURE_LIST = [
     ["acousticness",     1.0],
-    ["danceability",     1.1],
-    ["energy",           1.2],
-    ["instrumentalness", 0.9],
-    ["liveness",         0.6],
-    ["loudness",         0.8],
-    ["mode",             0.8],
-    ["speechiness",      0.6],
-    ["tempo",            0.7],
-    ["valence",          1.1]
+    ["danceability",     1.0],
+    ["energy",           1.0],
+    ["instrumentalness", 1.0],
+    ["liveness",         1.0],
+    ["loudness",         1.0],
+    ["mode",             1.0],
+    ["speechiness",      1.0],
+    ["tempo",            1.0],
+    ["valence",          1.0]
+    # ["acousticness",     1.0],
+    # ["danceability",     1.1],
+    # ["energy",           1.2],
+    # ["instrumentalness", 0.9],
+    # ["liveness",         0.6],
+    # ["loudness",         0.8],
+    # ["mode",             0.8],
+    # ["speechiness",      0.6],
+    # ["tempo",            0.7],
+    # ["valence",          1.1]
 ]
 DEBUG_STRING = ', '.join(f"{pair[0]} {pair[1]}" for pair in FEATURE_LIST)
 
